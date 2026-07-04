@@ -1,1003 +1,574 @@
-"""
-HRMS Backend API
-Flask + MySQL REST API for the HR Management System.
-
-Run:
-    pip install -r requirements.txt
-    cp .env.example .env   # then fill in your DB credentials
-    python app.py
-"""
-
-import os
-from flask import Flask, request, jsonify, g
-from flask_cors import CORS
+﻿import os
+from datetime import date, datetime
+from functools import wraps
 from dotenv import load_dotenv
 
-from db_connector import HRMSDatabase
-from auth import (
-    hash_password, verify_password, generate_token,
-    token_required, roles_required, self_or_roles,
-)
+import bcrypt
+from flask import Flask, request, jsonify, session
+from db import get_db
 
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
 
-ADMIN_ROLES = ("admin", "hr")
-
-
-def get_db():
-    """One pooled connection per request."""
-    if "db" not in g:
-        g.db = HRMSDatabase()
-    return g.db
+_secret = os.getenv("SECRET_KEY")
+if not _secret:
+    raise RuntimeError("SECRET_KEY is not set in your .env file.")
+app.secret_key = _secret
 
 
-@app.teardown_appcontext
-def close_db(exception=None):
-    db = g.pop("db", None)
-    if db is not None:
-        db.close()
+def serialize(row):
+    """Convert date/datetime to string so Flask can return it as JSON."""
+    if row is None:
+        return None
+    return {k: (v.isoformat() if isinstance(v, (date, datetime)) else v)
+            for k, v in row.items()}
+
+def err(msg, code=400):
+    return jsonify({"error": msg}), code
 
 
-def err(message, code=400):
-    return jsonify({"error": message}), code
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if "user_id" not in session:
+            return err("Please log in first.", 401)
+        return f(*args, **kwargs)
+    return wrapper
+
+def admin_or_hr(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if "user_id" not in session:
+            return err("Please log in first.", 401)
+        if session.get("role") not in ("admin", "hr"):
+            return err("Admin or HR access required.", 403)
+        return f(*args, **kwargs)
+    return wrapper
+
+def admin_only(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if "user_id" not in session:
+            return err("Please log in first.", 401)
+        if session.get("role") != "admin":
+            return err("Admin access required.", 403)
+        return f(*args, **kwargs)
+    return wrapper
 
 
-def _as_float(value):
-    return float(value or 0)
+@app.route("/api/auth/register", methods=["POST"])
+def register():
+    """Register a new employee account."""
+    data = request.get_json() or {}
+    required = ["employee_id", "full_name", "email", "password", "role"]
+    missing = [k for k in required if k not in data]
+    if missing:
+        return err(f"Missing fields: {', '.join(missing)}")
 
+    password_hash = bcrypt.hashpw(
+        data["password"].encode(), bcrypt.gensalt()
+    ).decode()
 
-def _display_role(user):
-    return user.get("job_title") or user.get("role") or "Employee"
-
-
-def _frontend_employee(user):
-    employee_id = user.get("employee_id")
-    active = bool(user.get("is_active", 1))
-    return {
-        "key": employee_id,
-        "id": employee_id,
-        "userId": user.get("user_id"),
-        "employeeId": employee_id,
-        "fullName": user.get("full_name"),
-        "name": user.get("full_name"),
-        "email": user.get("email"),
-        "phone": user.get("phone"),
-        "department": user.get("department"),
-        "designation": user.get("job_title"),
-        "role": _display_role(user),
-        "systemRole": user.get("role"),
-        "joinDate": user.get("date_joined"),
-        "joiningDate": user.get("date_joined"),
-        "salary": _as_float(user.get("annual_salary")),
-        "address": user.get("address"),
-        "profileImage": user.get("profile_picture"),
-        "status": "Active" if active else "Inactive",
-    }
-
-
-def _db_leave_type(label):
-    mapping = {
-        "sick leave": "sick",
-        "casual leave": "paid",
-        "earned leave": "paid",
-        "paid": "paid",
-        "sick": "sick",
-        "unpaid": "unpaid",
-    }
-    return mapping.get(str(label or "").strip().lower(), "paid")
-
-
-def _frontend_leave_type(label):
-    mapping = {"paid": "Earned Leave", "sick": "Sick Leave", "unpaid": "Casual Leave"}
-    return mapping.get(label, label or "Leave")
-
-
-def _frontend_status(status):
-    return str(status or "").replace("-", " ").title().replace(" ", "-")
-
-
-def _frontend_leave(row):
-    leave_id = f"LV-{row.get('leave_id')}"
-    return {
-        "key": leave_id,
-        "id": leave_id,
-        "leaveId": row.get("leave_id"),
-        "empId": row.get("employee_id"),
-        "employeeName": row.get("full_name"),
-        "type": _frontend_leave_type(row.get("leave_type")),
-        "startDate": row.get("start_date"),
-        "endDate": row.get("end_date"),
-        "days": row.get("total_days"),
-        "reason": row.get("reason"),
-        "status": _frontend_status(row.get("status")),
-        "appliedDate": row.get("applied_on"),
-        "approvedBy": row.get("reviewed_by_name") or "-",
-        "adminComment": row.get("admin_comment"),
-    }
-
-
-def _frontend_attendance_status(status):
-    mapping = {
-        "present": "On Time",
-        "half-day": "Short Hours",
-        "absent": "Absent",
-        "leave": "Leave",
-    }
-    return mapping.get(status, _frontend_status(status))
-
-
-def _frontend_attendance(row):
-    record_id = row.get("attendance_id") or f"{row.get('employee_id')}-{row.get('attendance_date')}"
-    hours = row.get("hours_worked")
-    return {
-        "key": str(record_id),
-        "id": record_id,
-        "empId": row.get("employee_id"),
-        "name": row.get("full_name"),
-        "date": row.get("attendance_date"),
-        "checkIn": row.get("check_in") or "-",
-        "checkOut": row.get("check_out") or "-",
-        "workingHours": str(hours) if hours else "0 hrs",
-        "totalHours": str(hours) if hours else "0 hrs",
-        "breakHours": "0 hrs",
-        "attendanceStatus": _frontend_attendance_status(row.get("status")),
-        "status": _frontend_attendance_status(row.get("status")),
-        "remarks": row.get("remarks"),
-    }
-
-
-def _payroll_month_name(month, year):
+    db = get_db()
     try:
-        import calendar
-        return f"{calendar.month_name[int(month)]} {year}"
+        user_id = db.execute(
+            """INSERT INTO users
+               (employee_id, full_name, email, password_hash, role,
+                department, job_title, phone, address)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (data["employee_id"], data["full_name"], data["email"],
+             password_hash, data["role"],
+             data.get("department"), data.get("job_title"),
+             data.get("phone"), data.get("address"))
+        )
+        return jsonify({"message": "Registered successfully", "user_id": user_id}), 201
     except Exception:
-        return f"{month}/{year}"
+        return err("Registration failed. Employee ID or email already exists.")
 
-
-def _frontend_payroll(row):
-    return {
-        "payrollId": row.get("payroll_id"),
-        "employeeId": row.get("employee_id"),
-        "employeeName": row.get("full_name"),
-        "department": row.get("department"),
-        "month": _payroll_month_name(row.get("pay_month"), row.get("pay_year")),
-        "basicSalary": _as_float(row.get("basic_salary")),
-        "allowances": _as_float(row.get("allowances")),
-        "deductions": _as_float(row.get("deductions")),
-        "netSalary": _as_float(row.get("net_salary")),
-        "paymentStatus": _frontend_status(row.get("pay_status")),
-        "paymentDate": row.get("payment_date"),
-    }
-
-
-# ════════════════════════════════════════════════════════════
-#  AUTH
-# ════════════════════════════════════════════════════════════
 
 @app.route("/api/auth/login", methods=["POST"])
 def login():
-    data = request.get_json(silent=True) or {}
-    email = data.get("email")
-    password = data.get("password")
-    if not email or not password:
-        return err("email and password are required")
+    """Login with email and password."""
+    data = request.get_json() or {}
+    if not data.get("email") or not data.get("password"):
+        return err("Email and password are required.")
 
-    db = get_db()
-    user = db.get_user_by_email(email)
-    if not user or not user["is_active"]:
-        return err("Invalid credentials", 401)
-    if not verify_password(password, user["password_hash"]):
-        return err("Invalid credentials", 401)
-
-    token = generate_token(user)
-    user.pop("password_hash", None)
-    return jsonify({"token": token, "user": user})
-
-
-@app.route("/api/auth/me", methods=["GET"])
-@token_required
-def me():
-    db = get_db()
-    user = db.get_user_by_id(g.current_user["user_id"])
-    if not user:
-        return err("User not found", 404)
-    user.pop("password_hash", None)
-    return jsonify(user)
-
-
-# ════════════════════════════════════════════════════════════
-#  USERS
-# ════════════════════════════════════════════════════════════
-
-@app.route("/api/auth/signup", methods=["POST"])
-def signup():
-    data = request.get_json(silent=True) or {}
-    employee_id = data.get("employee_id") or data.get("employeeId") or data.get("id")
-    full_name = data.get("full_name") or data.get("fullName") or data.get("name")
-    job_title = data.get("job_title") or data.get("designation") or data.get("role")
-    password = data.get("password") or "Password@123"
-    role = str(data.get("systemRole") or data.get("accountRole") or "employee").lower()
-    if role not in ("admin", "hr", "employee"):
-        role = "employee"
-
-    required = {
-        "employee_id": employee_id,
-        "full_name": full_name,
-        "email": data.get("email"),
-        "password": password,
-    }
-    missing = [name for name, value in required.items() if not value]
-    if missing:
-        return err(f"Missing fields: {', '.join(missing)}")
-
-    db = get_db()
-    if db.get_user_by_employee_id(employee_id):
-        return err("employee_id already exists", 409)
-    if db.get_user_by_email(data["email"]):
-        return err("email already exists", 409)
-
-    user_id = db.create_user(
-        employee_id=employee_id,
-        full_name=full_name,
-        email=data["email"],
-        password_hash=hash_password(password),
-        role=role,
-        department=data.get("department"),
-        job_title=job_title,
-        phone=data.get("phone"),
-        address=data.get("address"),
-        date_joined=data.get("date_joined") or data.get("joinDate"),
+    db   = get_db()
+    user = db.fetchone(
+        "SELECT * FROM users WHERE email = %s AND is_active = 1",
+        (data["email"],)
     )
-    user = db.get_user_by_id(user_id)
-    token = generate_token(user)
-    user.pop("password_hash", None)
-    return jsonify({"message": "Account created", "token": token, "user": user}), 201
+
+    if not user or not bcrypt.checkpw(
+        data["password"].encode(),
+        user["password_hash"].encode()
+    ):
+        return err("Invalid email or password.", 401)
+
+    session.clear()
+    session["user_id"] = user["user_id"]
+    session["role"]    = user["role"]
+
+    return jsonify({
+        "message":     "Login successful",
+        "user_id":     user["user_id"],
+        "full_name":   user["full_name"],
+        "employee_id": user["employee_id"],
+        "role":        user["role"],
+    }), 200
 
 
 @app.route("/api/auth/logout", methods=["POST"])
+@login_required
 def logout():
-    return jsonify({"message": "Logged out"})
+    session.clear()
+    return jsonify({"message": "Logged out successfully"}), 200
 
 
 @app.route("/api/users", methods=["GET"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def list_users():
-    db = get_db()
-    include_inactive = request.args.get("include_inactive", "false").lower() == "true"
-    return jsonify(db.get_all_users(include_inactive=include_inactive))
-
-
-@app.route("/api/users", methods=["POST"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def create_user():
-    data = request.get_json(silent=True) or {}
-    required = ["employee_id", "full_name", "email", "password", "role"]
-    missing = [f for f in required if not data.get(f)]
-    if missing:
-        return err(f"Missing fields: {', '.join(missing)}")
-
-    db = get_db()
-    if db.get_user_by_employee_id(data["employee_id"]):
-        return err("employee_id already exists", 409)
-    if db.get_user_by_email(data["email"]):
-        return err("email already exists", 409)
-
-    new_id = db.create_user(
-        employee_id=data["employee_id"],
-        full_name=data["full_name"],
-        email=data["email"],
-        password_hash=hash_password(data["password"]),
-        role=data["role"],
-        department=data.get("department"),
-        job_title=data.get("job_title"),
-        phone=data.get("phone"),
-        address=data.get("address"),
-        date_joined=data.get("date_joined"),
+@admin_or_hr
+def get_all_users():
+    """Admin/HR: list all active employees."""
+    db   = get_db()
+    rows = db.execute(
+        """SELECT user_id, employee_id, full_name, email, role,
+                  department, job_title, phone, date_joined, is_active
+           FROM users WHERE is_active = 1 ORDER BY date_joined DESC""",
+        fetch=True
     )
-    return jsonify({"message": "User created", "user_id": new_id}), 201
+    return jsonify([serialize(r) for r in rows]), 200
 
 
 @app.route("/api/users/<int:user_id>", methods=["GET"])
-@token_required
-@self_or_roles(lambda kw: kw["user_id"], *ADMIN_ROLES)
+@login_required
 def get_user(user_id):
-    db = get_db()
-    user = db.get_user_by_id(user_id)
+    """Get one employee profile. Employees can only view their own."""
+    if session["role"] == "employee" and session["user_id"] != user_id:
+        return err("Access denied.", 403)
+
+    db   = get_db()
+    user = db.fetchone(
+        """SELECT user_id, employee_id, full_name, email, role,
+                  department, job_title, phone, address,
+                  profile_picture, date_joined, email_verified
+           FROM users WHERE user_id = %s""",
+        (user_id,)
+    )
     if not user:
-        return err("User not found", 404)
-    user.pop("password_hash", None)
-    return jsonify(user)
-
-
-EMPLOYEE_EDITABLE_FIELDS = {"phone", "address", "profile_picture"}
-ADMIN_EDITABLE_FIELDS = EMPLOYEE_EDITABLE_FIELDS | {
-    "full_name", "email", "department", "job_title", "role",
-}
+        return err("User not found.", 404)
+    return jsonify(serialize(user)), 200
 
 
 @app.route("/api/users/<int:user_id>", methods=["PUT"])
-@token_required
-@self_or_roles(lambda kw: kw["user_id"], *ADMIN_ROLES)
+@login_required
 def update_user(user_id):
-    data = request.get_json(silent=True) or {}
-    is_admin = g.current_user["role"] in ADMIN_ROLES
-    allowed = ADMIN_EDITABLE_FIELDS if is_admin else EMPLOYEE_EDITABLE_FIELDS
+    """
+    Update profile.
+    Employees: can only edit phone, address, profile_picture — and only their own.
+    Admin/HR: can edit any non-system field.
+    """
+    data = request.get_json() or {}
 
-    fields = {k: v for k, v in data.items() if k in allowed}
-    if "password" in data:
-        fields["password_hash"] = hash_password(data["password"])
-    if not fields:
-        return err(f"No editable fields provided. Allowed: {sorted(allowed)}")
+    if session["role"] == "employee":
+        if session["user_id"] != user_id:
+            return err("Access denied.", 403)
+        data = {k: v for k, v in data.items()
+                if k in {"phone", "address", "profile_picture"}}
+    else:
+        strip = {"user_id", "password_hash", "created_at", "updated_at"}
+        data  = {k: v for k, v in data.items() if k not in strip}
 
+    if not data:
+        return err("No valid fields to update.")
+
+    set_clause = ", ".join(f"{k} = %s" for k in data)
     db = get_db()
-    db.update_user(user_id, **fields)
-    return jsonify({"message": "User updated"})
-
-
-@app.route("/api/users/<int:user_id>/deactivate", methods=["PUT"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def deactivate_user(user_id):
-    db = get_db()
-    rowcount = db.deactivate_user(user_id)
-    if not rowcount:
-        return err("User not found", 404)
-    return jsonify({"message": "User deactivated"})
+    try:
+        db.execute(
+            f"UPDATE users SET {set_clause} WHERE user_id = %s",
+            (*data.values(), user_id)
+        )
+        return jsonify({"message": "Profile updated"}), 200
+    except Exception:
+        return err("Update failed.")
 
 
 @app.route("/api/users/<int:user_id>", methods=["DELETE"])
-@token_required
-@roles_required("admin")
-def delete_user(user_id):
+@admin_only
+def deactivate_user(user_id):
+    """Admin soft-deletes (deactivates) an employee."""
     db = get_db()
-    rowcount = db.delete_user(user_id)
-    if not rowcount:
-        return err("User not found", 404)
-    return jsonify({"message": "User permanently deleted"})
-
-
-# ════════════════════════════════════════════════════════════
-#  ATTENDANCE
-# ════════════════════════════════════════════════════════════
-
-@app.route("/api/employees", methods=["GET"])
-@token_required
-def employees_directory():
-    db = get_db()
-    include_inactive = request.args.get("include_inactive", "false").lower() == "true"
-    rows = db.get_employee_directory(include_inactive=include_inactive)
-    return jsonify([_frontend_employee(row) for row in rows])
-
-
-@app.route("/api/employees/<employee_id>", methods=["GET"])
-@token_required
-def employee_by_employee_id(employee_id):
-    db = get_db()
-    user = db.get_user_by_employee_id(employee_id)
-    if not user:
-        return err("Employee not found", 404)
-    return jsonify(_frontend_employee(user))
-
-
-@app.route("/api/employees", methods=["POST"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def create_employee():
-    data = request.get_json(silent=True) or {}
-    employee_id = data.get("employee_id") or data.get("employeeId") or data.get("id")
-    full_name = data.get("full_name") or data.get("fullName") or data.get("name")
-    job_title = data.get("job_title") or data.get("designation") or data.get("role")
-    password = data.get("password") or "Password@123"
-    role = str(data.get("systemRole") or data.get("accountRole") or "employee").lower()
-    if role not in ("admin", "hr", "employee"):
-        role = "employee"
-
-    required = {
-        "employee_id": employee_id,
-        "full_name": full_name,
-        "email": data.get("email"),
-    }
-    missing = [name for name, value in required.items() if not value]
-    if missing:
-        return err(f"Missing fields: {', '.join(missing)}")
-
-    db = get_db()
-    if db.get_user_by_employee_id(employee_id):
-        return err("employee_id already exists", 409)
-    if db.get_user_by_email(data["email"]):
-        return err("email already exists", 409)
-
-    user_id = db.create_user(
-        employee_id=employee_id,
-        full_name=full_name,
-        email=data["email"],
-        password_hash=hash_password(password),
-        role=role,
-        department=data.get("department"),
-        job_title=job_title,
-        phone=data.get("phone"),
-        address=data.get("address"),
-        date_joined=data.get("date_joined") or data.get("joinDate"),
-    )
-    user = db.get_user_by_id(user_id)
-    return jsonify(_frontend_employee(user)), 201
-
-
-@app.route("/api/employees/<employee_id>", methods=["PUT"])
-@token_required
-def update_employee(employee_id):
-    db = get_db()
-    user = db.get_user_by_employee_id(employee_id)
-    if not user:
-        return err("Employee not found", 404)
-    if g.current_user["user_id"] != user["user_id"] and g.current_user["role"] not in ADMIN_ROLES:
-        return err("Insufficient permissions", 403)
-
-    data = request.get_json(silent=True) or {}
-    field_map = {
-        "name": "full_name",
-        "fullName": "full_name",
-        "full_name": "full_name",
-        "email": "email",
-        "phone": "phone",
-        "department": "department",
-        "role": "job_title",
-        "designation": "job_title",
-        "job_title": "job_title",
-        "address": "address",
-        "profileImage": "profile_picture",
-    }
-    is_admin = g.current_user["role"] in ADMIN_ROLES
-    employee_editable = {"phone", "address", "profile_picture"}
-    fields = {}
-    for incoming, db_field in field_map.items():
-        if incoming in data and (is_admin or db_field in employee_editable):
-            fields[db_field] = data[incoming]
-    if "password" in data:
-        fields["password_hash"] = hash_password(data["password"])
-    if not fields:
-        return err("No editable fields provided")
-
-    db.update_user(user["user_id"], **fields)
-    updated = db.get_user_by_employee_id(employee_id)
-    return jsonify(_frontend_employee(updated))
-
-
-@app.route("/api/employees/<employee_id>", methods=["DELETE"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def delete_employee(employee_id):
-    db = get_db()
-    user = db.get_user_by_employee_id(employee_id)
-    if not user:
-        return err("Employee not found", 404)
-    db.deactivate_user(user["user_id"])
-    return jsonify({"success": True, "message": "Employee deactivated"})
-
-
-@app.route("/api/attendance", methods=["GET"])
-@token_required
-def attendance_index():
-    db = get_db()
-    if g.current_user["role"] in ADMIN_ROLES:
-        rows = db.get_attendance_history()
-    else:
-        rows = db.get_attendance(g.current_user["user_id"])
-        for row in rows:
-            row["employee_id"] = g.current_user["employee_id"]
-            row["full_name"] = g.current_user.get("employee_id")
-    return jsonify([_frontend_attendance(row) for row in rows])
-
-
-@app.route("/api/attendance", methods=["POST"])
-@token_required
-def attendance_create():
-    data = request.get_json(silent=True) or {}
-    db = get_db()
-    if "empId" in data and g.current_user["role"] in ADMIN_ROLES:
-        user = db.get_user_by_employee_id(data["empId"])
-        if not user:
-            return err("Employee not found", 404)
-        user_id = user["user_id"]
-    else:
-        user_id = g.current_user["user_id"]
-
-    status_map = {
-        "on time": "present",
-        "late": "present",
-        "short hours": "half-day",
-        "absent": "absent",
-        "leave": "leave",
-    }
-    status = status_map.get(str(data.get("status") or "").lower(), "present")
-    db.mark_attendance(
-        user_id=user_id,
-        att_date=data.get("date") or data.get("attendance_date"),
-        check_in=data.get("checkIn") if data.get("checkIn") != "-" else None,
-        check_out=data.get("checkOut") if data.get("checkOut") != "-" else None,
-        status=status,
-        remarks=data.get("remarks"),
-        recorded_by=g.current_user["user_id"],
-    )
-    return jsonify({"message": "Attendance recorded"}), 201
+    db.execute("UPDATE users SET is_active = 0 WHERE user_id = %s", (user_id,))
+    return jsonify({"message": "Employee deactivated"}), 200
 
 
 @app.route("/api/attendance/checkin", methods=["POST"])
-@token_required
-def checkin():
-    db = get_db()
-    data = request.get_json(silent=True) or {}
-    db.check_in(g.current_user["user_id"], data.get("date"))
-    return jsonify({"message": "Checked in"})
+@login_required
+def check_in():
+    """Employee checks in. user_id always taken from session."""
+    user_id = session["user_id"]
+    today   = date.today().isoformat()
+    db      = get_db()
+    try:
+        db.execute(
+            """INSERT INTO attendance (user_id, attendance_date, check_in, status)
+               VALUES (%s, %s, NOW(), 'present')
+               ON DUPLICATE KEY UPDATE check_in = NOW(), status = 'present'""",
+            (user_id, today)
+        )
+        return jsonify({"message": "Checked in successfully"}), 200
+    except Exception:
+        return err("Check-in failed.")
 
 
 @app.route("/api/attendance/checkout", methods=["POST"])
-@token_required
-def checkout():
-    db = get_db()
-    data = request.get_json(silent=True) or {}
-    rowcount = db.check_out(g.current_user["user_id"], data.get("date"))
-    if not rowcount:
-        return err("No matching check-in found for that date")
-    return jsonify({"message": "Checked out"})
+@login_required
+def check_out():
+    """Employee checks out. user_id always taken from session."""
+    user_id = session["user_id"]
+    today   = date.today().isoformat()
+    db      = get_db()
+    try:
+        db.execute(
+            "UPDATE attendance SET check_out = NOW() WHERE user_id = %s AND attendance_date = %s",
+            (user_id, today)
+        )
+        return jsonify({"message": "Checked out successfully"}), 200
+    except Exception:
+        return err("Check-out failed.")
 
 
-@app.route("/api/attendance/mark", methods=["POST"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def mark_attendance():
-    """Admin manually marks/overwrites an employee's attendance."""
-    data = request.get_json(silent=True) or {}
-    required = ["user_id", "attendance_date"]
-    missing = [f for f in required if not data.get(f)]
-    if missing:
-        return err(f"Missing fields: {', '.join(missing)}")
+@app.route("/api/attendance/<int:user_id>", methods=["GET"])
+@login_required
+def get_attendance(user_id):
+    """Monthly attendance for one employee. Employees see only their own."""
+    if session["role"] == "employee" and session["user_id"] != user_id:
+        return err("Access denied.", 403)
 
-    db = get_db()
-    db.mark_attendance(
-        user_id=data["user_id"],
-        att_date=data["attendance_date"],
-        check_in=data.get("check_in"),
-        check_out=data.get("check_out"),
-        status=data.get("status", "present"),
-        remarks=data.get("remarks"),
-        recorded_by=g.current_user["user_id"],
+    month = request.args.get("month", date.today().month)
+    year  = request.args.get("year",  date.today().year)
+    db    = get_db()
+    rows  = db.execute(
+        """SELECT attendance_date, check_in, check_out, status, remarks,
+                  TIMEDIFF(check_out, check_in) AS hours_worked
+           FROM attendance
+           WHERE user_id = %s
+             AND MONTH(attendance_date) = %s
+             AND YEAR(attendance_date)  = %s
+           ORDER BY attendance_date""",
+        (user_id, month, year), fetch=True
     )
-    return jsonify({"message": "Attendance recorded"})
-
-
-@app.route("/api/attendance/me", methods=["GET"])
-@token_required
-def my_attendance():
-    db = get_db()
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    return jsonify(db.get_attendance(g.current_user["user_id"], month, year))
-
-
-@app.route("/api/attendance/me/weekly", methods=["GET"])
-@token_required
-def my_weekly_attendance():
-    db = get_db()
-    return jsonify(db.get_weekly_attendance(g.current_user["user_id"]))
-
-
-@app.route("/api/attendance/user/<int:user_id>", methods=["GET"])
-@token_required
-@self_or_roles(lambda kw: kw["user_id"], *ADMIN_ROLES)
-def user_attendance(user_id):
-    db = get_db()
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    return jsonify(db.get_attendance(user_id, month, year))
+    return jsonify([serialize(r) for r in rows]), 200
 
 
 @app.route("/api/attendance/all", methods=["GET"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def all_attendance():
-    db = get_db()
-    att_date = request.args.get("date")
-    return jsonify(db.get_all_attendance(att_date))
+@admin_or_hr
+def get_all_attendance():
+    """Admin/HR: all employees' attendance for a date."""
+    att_date = request.args.get("date", date.today().isoformat())
+    db   = get_db()
+    rows = db.execute(
+        """SELECT u.employee_id, u.full_name, u.department,
+                  a.check_in, a.check_out, a.status, a.remarks
+           FROM attendance a
+           JOIN users u ON u.user_id = a.user_id
+           WHERE a.attendance_date = %s
+           ORDER BY u.department, u.full_name""",
+        (att_date,), fetch=True
+    )
+    return jsonify([serialize(r) for r in rows]), 200
 
 
 @app.route("/api/attendance/summary", methods=["GET"])
-@token_required
-@roles_required(*ADMIN_ROLES)
+@admin_or_hr
 def attendance_summary():
-    db = get_db()
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    if not month or not year:
-        return err("month and year query params are required")
-    return jsonify(db.get_monthly_attendance_summary(month, year))
+    """Monthly attendance summary per employee (admin report)."""
+    month = request.args.get("month", date.today().month)
+    year  = request.args.get("year",  date.today().year)
+    db    = get_db()
+    rows  = db.execute(
+        """SELECT u.employee_id, u.full_name,
+                  COUNT(CASE WHEN a.status='present'  THEN 1 END) AS present_days,
+                  COUNT(CASE WHEN a.status='absent'   THEN 1 END) AS absent_days,
+                  COUNT(CASE WHEN a.status='half-day' THEN 1 END) AS half_days,
+                  COUNT(CASE WHEN a.status='leave'    THEN 1 END) AS on_leave_days
+           FROM attendance a
+           JOIN users u ON u.user_id = a.user_id
+           WHERE MONTH(a.attendance_date)=%s AND YEAR(a.attendance_date)=%s
+           GROUP BY u.user_id, u.employee_id, u.full_name
+           ORDER BY u.full_name""",
+        (month, year), fetch=True
+    )
+    return jsonify([serialize(r) for r in rows]), 200
 
 
 @app.route("/api/attendance/<int:user_id>/<att_date>", methods=["PUT"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def correct_attendance(user_id, att_date):
-    data = request.get_json(silent=True) or {}
-    if not data:
-        return err("No fields to update")
+@admin_or_hr
+def update_attendance(user_id, att_date):
+    """Admin/HR corrects an attendance record."""
+    data = request.get_json() or {}
+    allowed = {"check_in", "check_out", "status", "remarks"}
+    data    = {k: v for k, v in data.items() if k in allowed}
+    data["recorded_by"] = session["user_id"]   # always from session
+
+    set_clause = ", ".join(f"{k} = %s" for k in data)
     db = get_db()
-    rowcount = db.update_attendance(user_id, att_date, **data)
-    if not rowcount:
-        return err("Attendance record not found", 404)
-    return jsonify({"message": "Attendance updated"})
+    try:
+        db.execute(
+            f"UPDATE attendance SET {set_clause} WHERE user_id=%s AND attendance_date=%s",
+            (*data.values(), user_id, att_date)
+        )
+        return jsonify({"message": "Attendance updated"}), 200
+    except Exception:
+        return err("Update failed.")
 
 
 @app.route("/api/attendance/<int:user_id>/<att_date>", methods=["DELETE"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def remove_attendance(user_id, att_date):
+@admin_only
+def delete_attendance(user_id, att_date):
+    """Admin removes a wrong attendance entry."""
     db = get_db()
-    rowcount = db.delete_attendance(user_id, att_date)
-    if not rowcount:
-        return err("Attendance record not found", 404)
-    return jsonify({"message": "Attendance record deleted"})
-
-
-# ════════════════════════════════════════════════════════════
-#  LEAVES
-# ════════════════════════════════════════════════════════════
-
-@app.route("/api/leaves", methods=["GET"])
-@token_required
-def leaves_index():
-    db = get_db()
-    if g.current_user["role"] in ADMIN_ROLES:
-        rows = db.get_all_leaves()
-    else:
-        rows = db.get_employee_leaves(g.current_user["user_id"])
-        for row in rows:
-            row["employee_id"] = g.current_user["employee_id"]
-            row["full_name"] = g.current_user.get("employee_id")
-            row["reviewed_by_name"] = None
-    return jsonify([_frontend_leave(row) for row in rows])
-
-
-@app.route("/api/leaves/<leave_ref>", methods=["PATCH"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def patch_leave_status(leave_ref):
-    leave_id = str(leave_ref).replace("LV-", "")
-    data = request.get_json(silent=True) or {}
-    raw_status = str(data.get("status") or "").lower()
-    status = {"approved": "approved", "rejected": "rejected"}.get(raw_status)
-    if not status:
-        return err("status must be Approved or Rejected")
-    db = get_db()
-    rowcount = db.review_leave(
-        int(leave_id), status, g.current_user["user_id"], data.get("admin_comment", "")
+    db.execute(
+        "DELETE FROM attendance WHERE user_id=%s AND attendance_date=%s",
+        (user_id, att_date)
     )
-    if not rowcount:
-        return err("Leave request not found", 404)
-    return jsonify({"message": f"Leave {status}"})
+    return jsonify({"message": "Attendance record deleted"}), 200
 
 
 @app.route("/api/leaves", methods=["POST"])
-@token_required
+@login_required
 def apply_leave():
-    data = request.get_json(silent=True) or {}
-    leave_type = data.get("leave_type") or data.get("type")
-    start_date = data.get("start_date") or data.get("startDate")
-    end_date = data.get("end_date") or data.get("endDate")
-    reason = data.get("reason")
-    required = {
-        "leave_type": leave_type,
-        "start_date": start_date,
-        "end_date": end_date,
-        "reason": reason,
-    }
-    missing = [f for f, value in required.items() if not value]
+    """Employee submits a leave request. user_id taken from session."""
+    data = request.get_json() or {}
+    required = ["leave_type", "start_date", "end_date", "reason"]
+    missing  = [k for k in required if k not in data]
     if missing:
         return err(f"Missing fields: {', '.join(missing)}")
 
-    db = get_db()
-    new_id = db.apply_leave(
-        user_id=g.current_user["user_id"],
-        leave_type=_db_leave_type(leave_type),
-        start_date=start_date,
-        end_date=end_date,
-        reason=reason,
-    )
-    return jsonify({"message": "Leave request submitted", "leave_id": new_id, "id": f"LV-{new_id}"}), 201
+    start = datetime.strptime(data["start_date"], "%Y-%m-%d").date()
+    end   = datetime.strptime(data["end_date"],   "%Y-%m-%d").date()
+    if end < start:
+        return err("end_date must be on or after start_date.")
 
-
-@app.route("/api/leaves/me", methods=["GET"])
-@token_required
-def my_leaves():
-    db = get_db()
-    return jsonify(db.get_employee_leaves(g.current_user["user_id"]))
+    total_days = (end - start).days + 1
+    user_id    = session["user_id"]
+    db         = get_db()
+    try:
+        leave_id = db.execute(
+            """INSERT INTO leaves
+               (user_id, leave_type, start_date, end_date, total_days, reason)
+               VALUES (%s,%s,%s,%s,%s,%s)""",
+            (user_id, data["leave_type"],
+             data["start_date"], data["end_date"], total_days, data["reason"])
+        )
+        return jsonify({"message": "Leave request submitted", "leave_id": leave_id}), 201
+    except Exception:
+        return err("Could not submit leave request.")
 
 
 @app.route("/api/leaves/user/<int:user_id>", methods=["GET"])
-@token_required
-@self_or_roles(lambda kw: kw["user_id"], *ADMIN_ROLES)
-def user_leaves(user_id):
-    db = get_db()
-    return jsonify(db.get_employee_leaves(user_id))
+@login_required
+def get_employee_leaves(user_id):
+    """View leave history. Employees restricted to own records."""
+    if session["role"] == "employee" and session["user_id"] != user_id:
+        return err("Access denied.", 403)
+
+    db   = get_db()
+    rows = db.execute(
+        """SELECT leave_id, leave_type, start_date, end_date,
+                  total_days, reason, status, admin_comment, applied_on
+           FROM leaves WHERE user_id=%s ORDER BY applied_on DESC""",
+        (user_id,), fetch=True
+    )
+    return jsonify([serialize(r) for r in rows]), 200
 
 
 @app.route("/api/leaves/pending", methods=["GET"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def pending_leaves():
-    db = get_db()
-    return jsonify(db.get_pending_leaves())
-
-
-@app.route("/api/leaves/summary", methods=["GET"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def leave_summary():
-    db = get_db()
-    year = request.args.get("year", type=int)
-    return jsonify(db.get_leave_summary(year))
+@admin_or_hr
+def get_pending_leaves():
+    """Admin/HR: all pending leave requests."""
+    db   = get_db()
+    rows = db.execute(
+        """SELECT l.leave_id, u.employee_id, u.full_name, u.department,
+                  l.leave_type, l.start_date, l.end_date,
+                  l.total_days, l.reason, l.applied_on
+           FROM leaves l
+           JOIN users u ON u.user_id = l.user_id
+           WHERE l.status='pending'
+           ORDER BY l.applied_on ASC""",
+        fetch=True
+    )
+    return jsonify([serialize(r) for r in rows]), 200
 
 
 @app.route("/api/leaves/<int:leave_id>/review", methods=["PUT"])
-@token_required
-@roles_required(*ADMIN_ROLES)
+@admin_or_hr
 def review_leave(leave_id):
-    data = request.get_json(silent=True) or {}
+    """Admin/HR approves or rejects a leave request."""
+    data   = request.get_json() or {}
     status = data.get("status")
     if status not in ("approved", "rejected"):
-        return err("status must be 'approved' or 'rejected'")
+        return err("status must be 'approved' or 'rejected'.")
 
     db = get_db()
-    rowcount = db.review_leave(
-        leave_id, status, g.current_user["user_id"], data.get("admin_comment", "")
-    )
-    if not rowcount:
-        return err("Leave request not found", 404)
-    return jsonify({"message": f"Leave {status}"})
+    try:
+        db.execute(
+            """UPDATE leaves
+               SET status=%s, reviewed_by=%s, admin_comment=%s, reviewed_on=NOW()
+               WHERE leave_id=%s""",
+            (status, session["user_id"], data.get("admin_comment", ""), leave_id)
+        )
+        return jsonify({"message": f"Leave {status}"}), 200
+    except Exception:
+        return err("Could not update leave.")
 
 
 @app.route("/api/leaves/<int:leave_id>", methods=["DELETE"])
-@token_required
+@login_required
 def cancel_leave(leave_id):
-    db = get_db()
-    is_admin = g.current_user["role"] in ADMIN_ROLES
-    # Employees may only cancel their own pending leave; admins can cancel any pending leave.
-    user_id_filter = None if is_admin else g.current_user["user_id"]
-    rowcount = db.cancel_leave(leave_id, user_id=user_id_filter)
-    if not rowcount:
-        return err("Leave not found, not pending, or not yours to cancel", 404)
-    return jsonify({"message": "Leave cancelled"})
+    """Employee cancels their own pending leave."""
+    db     = get_db()
+    record = db.fetchone(
+        "SELECT user_id, status FROM leaves WHERE leave_id=%s", (leave_id,)
+    )
+    if not record:
+        return err("Leave not found.", 404)
+    if session["role"] == "employee" and record["user_id"] != session["user_id"]:
+        return err("Access denied.", 403)
+    if record["status"] != "pending":
+        return err("Only pending requests can be cancelled.")
+
+    db.execute("DELETE FROM leaves WHERE leave_id=%s", (leave_id,))
+    return jsonify({"message": "Leave request cancelled"}), 200
 
 
-# ════════════════════════════════════════════════════════════
-#  PAYROLL
-# ════════════════════════════════════════════════════════════
+@app.route("/api/payroll/<int:user_id>", methods=["GET"])
+@login_required
+def get_employee_payroll(user_id):
+    """Payroll history for one employee (read-only for employees)."""
+    if session["role"] == "employee" and session["user_id"] != user_id:
+        return err("Access denied.", 403)
 
-@app.route("/api/payroll", methods=["GET"])
-@token_required
-def payroll_index():
-    db = get_db()
-    if g.current_user["role"] in ADMIN_ROLES:
-        rows = db.get_all_payroll()
-    else:
-        rows = db.get_employee_payroll(g.current_user["user_id"])
-        for row in rows:
-            row["employee_id"] = g.current_user["employee_id"]
-            row["full_name"] = g.current_user.get("employee_id")
-            row["department"] = None
-    return jsonify([_frontend_payroll(row) for row in rows])
+    db   = get_db()
+    rows = db.execute(
+        """SELECT pay_year, pay_month, basic_salary, allowances,
+                  deductions, net_salary, pay_status, payment_date
+           FROM payroll WHERE user_id=%s
+           ORDER BY pay_year DESC, pay_month DESC""",
+        (user_id,), fetch=True
+    )
+    return jsonify([serialize(r) for r in rows]), 200
 
 
-@app.route("/api/payroll/download/<month>", methods=["GET"])
-@token_required
-def download_payslip(month):
-    return jsonify({"message": "Payslip generation is not configured yet", "month": month})
+@app.route("/api/payroll/summary", methods=["GET"])
+@admin_or_hr
+def payroll_summary():
+    """Admin/HR: payroll summary for all employees for a month."""
+    month = request.args.get("month", date.today().month)
+    year  = request.args.get("year",  date.today().year)
+    db    = get_db()
+    rows  = db.execute(
+        """SELECT u.employee_id, u.full_name, u.department,
+                  p.basic_salary, p.allowances, p.deductions,
+                  p.net_salary, p.pay_status
+           FROM payroll p
+           JOIN users u ON u.user_id = p.user_id
+           WHERE p.pay_month=%s AND p.pay_year=%s
+           ORDER BY u.department, u.full_name""",
+        (month, year), fetch=True
+    )
+    return jsonify([serialize(r) for r in rows]), 200
 
 
 @app.route("/api/payroll", methods=["POST"])
-@token_required
-@roles_required(*ADMIN_ROLES)
+@admin_only
 def create_payroll():
-    data = request.get_json(silent=True) or {}
-    required = ["user_id", "pay_month", "pay_year", "basic_salary", "allowances", "deductions"]
-    missing = [f for f in required if data.get(f) is None]
+    """Admin creates a payroll record."""
+    data     = request.get_json() or {}
+    required = ["user_id", "pay_month", "pay_year",
+                "basic_salary", "allowances", "deductions"]
+    missing  = [k for k in required if k not in data]
     if missing:
         return err(f"Missing fields: {', '.join(missing)}")
 
     db = get_db()
-    new_id = db.create_payroll(
-        user_id=data["user_id"], pay_month=data["pay_month"], pay_year=data["pay_year"],
-        basic_salary=data["basic_salary"], allowances=data["allowances"], deductions=data["deductions"],
-        created_by=g.current_user["user_id"], pay_status=data.get("pay_status", "pending"),
-        notes=data.get("notes", ""),
-    )
-    return jsonify({"message": "Payroll record created", "payroll_id": new_id}), 201
-
-
-@app.route("/api/payroll/bulk-generate", methods=["POST"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def bulk_generate_payroll():
-    data = request.get_json(silent=True) or {}
-    month, year = data.get("pay_month"), data.get("pay_year")
-    if not month or not year:
-        return err("pay_month and pay_year are required")
-    db = get_db()
-    rowcount = db.bulk_generate_payroll(month, year, g.current_user["user_id"])
-    return jsonify({"message": f"Generated/updated {rowcount} payroll records"})
-
-
-@app.route("/api/payroll/me", methods=["GET"])
-@token_required
-def my_payroll():
-    db = get_db()
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    return jsonify(db.get_employee_payroll(g.current_user["user_id"], month, year))
-
-
-@app.route("/api/payroll/user/<int:user_id>", methods=["GET"])
-@token_required
-@self_or_roles(lambda kw: kw["user_id"], *ADMIN_ROLES)
-def user_payroll(user_id):
-    db = get_db()
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    return jsonify(db.get_employee_payroll(user_id, month, year))
-
-
-@app.route("/api/payroll/summary", methods=["GET"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def payroll_summary():
-    db = get_db()
-    month = request.args.get("month", type=int)
-    year = request.args.get("year", type=int)
-    if not month or not year:
-        return err("month and year query params are required")
-    return jsonify(db.get_payroll_summary(month, year))
-
-
-@app.route("/api/payroll/total-cost", methods=["GET"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def total_payroll_cost():
-    db = get_db()
-    return jsonify(db.get_total_payroll_cost())
+    try:
+        pid = db.execute(
+            """INSERT INTO payroll
+               (user_id, pay_month, pay_year, basic_salary, allowances,
+                deductions, pay_status, created_by, notes)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (data["user_id"], data["pay_month"], data["pay_year"],
+             data["basic_salary"], data["allowances"], data["deductions"],
+             data.get("pay_status", "pending"), session["user_id"],
+             data.get("notes", ""))
+        )
+        return jsonify({"message": "Payroll record created", "payroll_id": pid}), 201
+    except Exception:
+        return err("Could not create payroll. Record may already exist for this month.")
 
 
 @app.route("/api/payroll/<int:payroll_id>", methods=["PUT"])
-@token_required
-@roles_required(*ADMIN_ROLES)
+@admin_only
 def update_payroll(payroll_id):
-    data = request.get_json(silent=True) or {}
+    """Admin updates a payroll record."""
+    data    = request.get_json() or {}
+    allowed = {"basic_salary", "allowances", "deductions",
+               "pay_status", "payment_date", "notes"}
+    data    = {k: v for k, v in data.items() if k in allowed}
     if not data:
-        return err("No fields to update")
-    db = get_db()
-    rowcount = db.update_payroll(payroll_id, **data)
-    if not rowcount:
-        return err("Payroll record not found", 404)
-    return jsonify({"message": "Payroll updated"})
+        return err("No valid fields to update.")
 
-
-@app.route("/api/payroll/mark-paid", methods=["PUT"])
-@token_required
-@roles_required(*ADMIN_ROLES)
-def mark_payroll_paid():
-    data = request.get_json(silent=True) or {}
-    month, year = data.get("pay_month"), data.get("pay_year")
-    if not month or not year:
-        return err("pay_month and pay_year are required")
+    set_clause = ", ".join(f"{k} = %s" for k in data)
     db = get_db()
-    rowcount = db.mark_payroll_paid(month, year)
-    return jsonify({"message": f"Marked {rowcount} payroll record(s) as paid"})
+    try:
+        db.execute(
+            f"UPDATE payroll SET {set_clause} WHERE payroll_id=%s",
+            (*data.values(), payroll_id)
+        )
+        return jsonify({"message": "Payroll updated"}), 200
+    except Exception:
+        return err("Update failed.")
 
 
 @app.route("/api/payroll/<int:payroll_id>", methods=["DELETE"])
-@token_required
-@roles_required(*ADMIN_ROLES)
+@admin_only
 def delete_payroll(payroll_id):
+    """Admin removes an incorrect payroll record."""
     db = get_db()
-    rowcount = db.delete_payroll(payroll_id)
-    if not rowcount:
-        return err("Payroll record not found", 404)
-    return jsonify({"message": "Payroll record deleted"})
+    db.execute("DELETE FROM payroll WHERE payroll_id=%s", (payroll_id,))
+    return jsonify({"message": "Payroll record deleted"}), 200
 
 
-# ════════════════════════════════════════════════════════════
-#  DASHBOARD
-# ════════════════════════════════════════════════════════════
 
-@app.route("/api/dashboard/me", methods=["GET"])
-@token_required
-def my_dashboard():
-    db = get_db()
-    return jsonify(db.get_employee_dashboard(g.current_user["user_id"]))
+@app.route("/api/dashboard/<int:user_id>", methods=["GET"])
+@login_required
+def dashboard(user_id):
+    """Quick dashboard data: profile + today's attendance + pending leaves + latest salary."""
+    if session["role"] == "employee" and session["user_id"] != user_id:
+        return err("Access denied.", 403)
 
-
-@app.route("/api/dashboard/user/<int:user_id>", methods=["GET"])
-@token_required
-@self_or_roles(lambda kw: kw["user_id"], *ADMIN_ROLES)
-def user_dashboard(user_id):
-    db = get_db()
-    return jsonify(db.get_employee_dashboard(user_id))
-
-
-# ════════════════════════════════════════════════════════════
-#  HEALTH CHECK
-# ════════════════════════════════════════════════════════════
-
-@app.route("/api/dashboard/stats", methods=["GET"])
-@token_required
-def dashboard_stats():
-    db = get_db()
-    stats = db.get_dashboard_stats()
-    return jsonify({
-        "totalEmployees": stats.get("total_employees", 0),
-        "activeEmployees": stats.get("active_employees", 0),
-        "presentToday": stats.get("present_today", 0),
-        "absentToday": stats.get("absent_today", 0),
-        "employeesOnLeave": stats.get("employees_on_leave", 0),
-        "pendingLeaveRequests": stats.get("pending_leave_requests", 0),
-        "monthlyPayroll": _as_float(stats.get("monthly_payroll")),
-        "totalDepartments": stats.get("total_departments", 0),
-        "newEmployeesThisMonth": stats.get("new_employees_this_month", 0),
-    })
-
-
-@app.route("/api/profile", methods=["GET"])
-@token_required
-def profile():
-    db = get_db()
-    user = db.get_user_by_id(g.current_user["user_id"])
-    if not user:
-        return err("User not found", 404)
-    user.pop("password_hash", None)
-    return jsonify(_frontend_employee(user))
-
-
-@app.route("/api/profile", methods=["PUT"])
-@token_required
-def update_profile():
-    data = request.get_json(silent=True) or {}
-    allowed = {
-        "name": "full_name",
-        "fullName": "full_name",
-        "phone": "phone",
-        "address": "address",
-        "profileImage": "profile_picture",
-    }
-    fields = {db_field: data[incoming] for incoming, db_field in allowed.items() if incoming in data}
-    if "password" in data:
-        fields["password_hash"] = hash_password(data["password"])
-    if not fields:
-        return err("No editable fields provided")
-    db = get_db()
-    db.update_user(g.current_user["user_id"], **fields)
-    user = db.get_user_by_id(g.current_user["user_id"])
-    return jsonify(_frontend_employee(user))
-
-
-@app.route("/api/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"})
-
-
-@app.errorhandler(404)
-def not_found(e):
-    return err("Not found", 404)
-
-
-@app.errorhandler(500)
-def server_error(e):
-    return err("Internal server error", 500)
-
+    db   = get_db()
+    row  = db.fetchone(
+        """SELECT
+               u.employee_id, u.full_name, u.department, u.job_title,
+               a.check_in, a.check_out, a.status AS today_status,
+               (SELECT COUNT(*) FROM leaves l
+                WHERE l.user_id = u.user_id AND l.status = 'pending') AS pending_leaves,
+               p.net_salary, p.pay_status
+           FROM users u
+           LEFT JOIN attendance a
+               ON a.user_id = u.user_id AND a.attendance_date = CURDATE()
+           LEFT JOIN payroll p
+               ON p.user_id = u.user_id
+               AND p.pay_month = MONTH(CURDATE())
+               AND p.pay_year  = YEAR(CURDATE())
+           WHERE u.user_id = %s""",
+        (user_id,)
+    )
+    return jsonify(serialize(row)), 200
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    debug = os.getenv("FLASK_DEBUG", "true").lower() == "true"
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    app.run(debug=debug, host="127.0.0.1", port=5000)
