@@ -31,7 +31,7 @@ const Attendance = () => {
   const loadLogs = async () => {
     try {
       const res = await api.getAttendance();
-      setLogs(res.data);
+      setLogs(res.data.data || []);
     } catch (err) {
       console.error(err);
     }
@@ -164,8 +164,10 @@ const Attendance = () => {
 
   // Filtered and searched logs table mapping
   const filteredLogs = logs.filter(log => {
-    const matchesSearch = log.date.includes(searchText) || log.status.toLowerCase().includes(searchText.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || log.status === statusFilter;
+    const logDate = String(log.date || '');
+    const logStatus = String(log.status || '');
+    const matchesSearch = logDate.includes(searchText) || logStatus.toLowerCase().includes(searchText.toLowerCase());
+    const matchesStatus = statusFilter === 'All' || logStatus === statusFilter;
     return matchesSearch && matchesStatus;
   });
 

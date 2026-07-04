@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Dropdown, Avatar, Space, Badge, Drawer, Grid, Breadcrumb, Typography, Input, Tooltip } from 'antd';
+import { Layout, Menu, Button, Dropdown, Avatar, Space, Badge, Drawer, Grid, Breadcrumb, Typography, Input, Tooltip, message } from 'antd';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -55,7 +55,10 @@ const MainLayout = () => {
   const getSelectedKey = () => {
     const path = location.pathname;
     if (path.startsWith('/dashboard')) return 'dashboard';
-    if (path.startsWith('/profile')) return 'profile';
+    if (path.startsWith('/profile')) {
+      if (location.hash === '#settings') return 'settings';
+      return 'profile';
+    }
     if (path.startsWith('/attendance')) return 'attendance';
     if (path.startsWith('/leave')) return 'leave';
     if (path.startsWith('/payroll')) return 'payroll';
@@ -115,6 +118,7 @@ const MainLayout = () => {
       label: 'Settings',
     },
     {
+      key: 'sidebar-divider',
       type: 'divider',
     },
     {
@@ -140,6 +144,7 @@ const MainLayout = () => {
       onClick: () => navigate('/profile#settings'),
     },
     {
+      key: 'profile-divider',
       type: 'divider',
     },
     {

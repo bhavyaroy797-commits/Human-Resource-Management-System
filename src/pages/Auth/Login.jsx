@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card, Form, Input, Checkbox, Button, Typography, Divider, Space, message } from 'antd';
+import { api } from '../../services/api.js';
 import { 
   MailOutlined, 
   LockOutlined, 
@@ -14,45 +15,30 @@ const Login = () => {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [submittable, setSubmittable] = useState(false);
-  
-  // Watch all form fields for value changes to dynamic validate submit state
-  const values = Form.useWatch([], form);
 
-  useEffect(() => {
-    form
-      .validateFields({ validateOnly: true })
-      .then(() => setSubmittable(true))
-      .catch(() => setSubmittable(false));
-  }, [values, form]);
 
   // Form submission handler
   const onFinish = (values) => {
     setLoading(true);
     
-    // Simulate authentication API call (e.g. Flask backend)
-    setTimeout(() => {
-      const isAdmin = values.email === 'admin@hrms.com';
-      
-      const userObj = {
-        name: isAdmin ? 'Ratnadeep' : 'John Doe',
-        role: isAdmin ? 'HR Manager' : 'Software Engineer',
-        email: values.email,
-        avatarUrl: null
-      };
-
-      // Set authentication tokens in local storage
-      localStorage.setItem('isAuthenticated', 'true');
-      localStorage.setItem('currentUser', JSON.stringify(userObj));
-      
-      message.success({
-        content: `Welcome back, ${userObj.name}!`,
-        duration: 3
+    // Connects login directly to Flask backend Authentication REST APIs
+    api.login(values.email, values.password)
+      .then((res) => {
+        const { user } = res.data;
+        message.success({
+          content: `Welcome back, ${user.name || 'User'}!`,
+          duration: 3
+        });
+        setLoading(false);
+        navigate('/dashboard');
+      })
+      .catch((err) => {
+        setLoading(false);
+        message.error({
+          content: err.message || 'Login failed. Verify backend service or credential inputs.',
+          duration: 4
+        });
       });
-      
-      setLoading(false);
-      navigate('/dashboard');
-    }, 1200);
   };
 
   return (
@@ -145,14 +131,13 @@ const Login = () => {
             type="primary" 
             htmlType="submit" 
             loading={loading} 
-            disabled={!submittable}
             block 
             style={{ 
               borderRadius: '8px', 
               fontWeight: 600,
               height: '45px',
               backgroundColor: '#1677ff',
-              boxShadow: submittable ? '0 4px 12px rgba(22, 119, 255, 0.2)' : 'none',
+              boxShadow: '0 4px 12px rgba(22, 119, 255, 0.2)',
               transition: 'all 0.2s ease-in-out'
             }}
           >

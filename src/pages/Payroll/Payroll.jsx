@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Row, Col, Card, Table, Tag, Button, Typography, Space, Progress, List, Divider, Input, Select, message, Tooltip, Modal, Badge } from 'antd';
+import { Row, Col, Card, Table, Tag, Button, Typography, Space, Progress, List, Divider, Input, Select, message, Tooltip, Modal, Badge, Descriptions } from 'antd';
 import {
   WalletOutlined,
   DollarCircleOutlined,
@@ -33,7 +33,7 @@ const Payroll = () => {
       try {
         const sessionUser = JSON.parse(storedUser);
         api.getEmployees().then(res => {
-          const allEmps = res.data;
+          const allEmps = res.data.data || [];
           const matched = allEmps.find(e => e.email === sessionUser.email);
           if (matched) {
             setCurrentUser(matched);
@@ -74,7 +74,7 @@ const Payroll = () => {
     accountNumber: '•••• •••• 4096',
     ifsc: 'SVCB0004928',
     paymentMode: 'Direct Deposit / ACH',
-    upi: `${currentUser.name.toLowerCase().replace(' ', '')}@svcb`
+    upi: `${(currentUser.name || currentUser.fullName || 'Employee').toLowerCase().replace(/\s+/g, '')}@svcb`
   };
 
   // Mock Notifications
@@ -231,11 +231,11 @@ const Payroll = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', backgroundColor: '#fafafa', padding: '16px', borderRadius: '8px', marginBottom: '24px' }}>
               <div>
                 <Text type="secondary" style={{ fontSize: '11px', display: 'block' }}>EMPLOYEE NAME</Text>
-                <Text strong>{currentUser.name}</Text>
+                <Text strong>{currentUser.name || currentUser.fullName || currentUser.full_name || 'Employee'}</Text>
               </div>
               <div>
                 <Text type="secondary" style={{ fontSize: '11px', display: 'block' }}>EMPLOYEE ID</Text>
-                <Text strong>{currentUser.id || 'EMP003'}</Text>
+                <Text strong>{currentUser.employee_id || currentUser.id || 'EMP001'}</Text>
               </div>
               <div>
                 <Text type="secondary" style={{ fontSize: '11px', display: 'block' }}>DEPARTMENT</Text>
@@ -243,7 +243,7 @@ const Payroll = () => {
               </div>
               <div>
                 <Text type="secondary" style={{ fontSize: '11px', display: 'block' }}>DESIGNATION</Text>
-                <Text strong>{currentUser.role}</Text>
+                <Text strong>{currentUser.role || currentUser.designation || 'Staff'}</Text>
               </div>
             </div>
 

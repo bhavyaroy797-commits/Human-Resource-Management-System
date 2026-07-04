@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Row, Col, Card, Table, Tag, Button, Typography, Space, Drawer, Modal, Form, Input, Select, DatePicker, Popconfirm, Avatar, Badge, List, message, Tooltip, InputNumber, Radio } from 'antd';
+import { Row, Col, Card, Table, Tag, Button, Typography, Space, Drawer, Modal, Form, Input, Select, DatePicker, Popconfirm, Avatar, Badge, List, message, Tooltip, InputNumber, Radio, Descriptions } from 'antd';
 import {
   TeamOutlined,
   UserCheckOutlined,
@@ -47,7 +47,7 @@ const Employees = () => {
   const loadEmployees = async () => {
     try {
       const res = await api.getEmployees();
-      setEmployees(res.data);
+      setEmployees(res.data.data || []);
     } catch (err) {
       console.error(err);
     }
@@ -60,7 +60,7 @@ const Employees = () => {
   // Handle query parameter search (e.g. from Dashboard view details redirect)
   useEffect(() => {
     if (location.state?.searchId && employees.length > 0) {
-      const targetEmp = employees.find(e => e.id === location.state.searchId);
+      const targetEmp = employees.find(e => e.employee_id === location.state.searchId || e.id === location.state.searchId);
       if (targetEmp) {
         setSelectedEmp(targetEmp);
         setIsDetailsDrawerOpen(true);
@@ -143,23 +143,34 @@ const Employees = () => {
   const columns = [
     {
       title: 'Employee ID',
-      dataIndex: 'id',
-      key: 'id',
-      render: (text) => <Text strong>{text}</Text>,
-      sorter: (a, b) => a.id.localeCompare(b.id)
+      key: 'employee_id',
+      render: (_, record) => <Text strong>{record.employee_id || record.id}</Text>,
+      sorter: (a, b) => {
+        const idA = String(a.employee_id || a.id || '');
+        const idB = String(b.employee_id || b.id || '');
+        return idA.localeCompare(idB);
+      }
     },
     {
       title: 'Name',
       key: 'name',
-      render: (_, record) => (
-        <Space>
-          <Avatar style={{ backgroundColor: '#1677ff' }}>
-            {record.name.split(' ').map(n => n[0]).join('')}
-          </Avatar>
-          <Text strong style={{ fontSize: '13px' }}>{record.name}</Text>
-        </Space>
-      ),
-      sorter: (a, b) => a.name.localeCompare(b.name)
+      render: (_, record) => {
+        const displayName = record.full_name || record.name || record.fullName || 'Employee';
+        const initials = displayName.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase();
+        return (
+          <Space>
+            <Avatar style={{ backgroundColor: '#1677ff' }}>
+              {initials}
+            </Avatar>
+            <Text strong style={{ fontSize: '13px' }}>{displayName}</Text>
+          </Space>
+        );
+      },
+      sorter: (a, b) => {
+        const nameA = String(a.full_name || a.name || a.fullName || '');
+        const nameB = String(b.full_name || b.name || b.fullName || '');
+        return nameA.localeCompare(nameB);
+      }
     },
     {
       title: 'Email',
@@ -180,13 +191,13 @@ const Employees = () => {
     },
     {
       title: 'Designation / Role',
-      dataIndex: 'role',
-      key: 'role'
+      key: 'designation',
+      render: (_, record) => <Text style={{ fontSize: '13px' }}>{record.designation || record.role || ''}</Text>
     },
     {
       title: 'Join Date',
-      dataIndex: 'joinDate',
-      key: 'joinDate'
+      key: 'joining_date',
+      render: (_, record) => <Text style={{ fontSize: '13px' }}>{record.joining_date || record.joinDate || ''}</Text>
     },
     {
       title: 'Status',
@@ -217,11 +228,11 @@ const Employees = () => {
             onClick={() => {
               setSelectedEmp(record);
               editForm.setFieldsValue({
-                name: record.name,
+                name: record.full_name || record.name || record.fullName,
                 email: record.email,
                 phone: record.phone,
                 department: record.department,
-                role: record.role,
+                role: record.designation || record.role,
                 salary: record.salary,
                 address: record.address
               });
@@ -231,7 +242,7 @@ const Employees = () => {
           <Popconfirm
             title="Remove Employee"
             description="Are you sure you want to delete this employee record?"
-            onConfirm={() => handleDeleteEmployee(record.id)}
+            onConfirm={() => handleDeleteEmployee(record.employee_id || record.id)}
             okText="Yes, Delete"
             cancelText="Cancel"
             okButtonProps={{ danger: true }}
@@ -245,9 +256,12 @@ const Employees = () => {
 
   // Live filter computation
   const filteredEmployees = employees.filter(e => {
-    const matchesSearch = e.name.toLowerCase().includes(searchText.toLowerCase()) || 
-                          e.id.toLowerCase().includes(searchText.toLowerCase()) ||
-                          e.email.toLowerCase().includes(searchText.toLowerCase());
+    const empName = String(e.full_name || e.name || e.fullName || '');
+    const empId = String(e.employee_id || e.id || '');
+    const empEmail = String(e.email || '');
+    const matchesSearch = empName.toLowerCase().includes(searchText.toLowerCase()) || 
+                          empId.toLowerCase().includes(searchText.toLowerCase()) ||
+                          empEmail.toLowerCase().includes(searchText.toLowerCase());
     const matchesDept = deptFilter === 'All' || e.department === deptFilter;
     const matchesStatus = statusFilter === 'All' || e.status === statusFilter;
     return matchesSearch && matchesDept && matchesStatus;
@@ -462,11 +476,11 @@ const Employees = () => {
                   onEdit={(employee) => {
                     setSelectedEmp(employee);
                     editForm.setFieldsValue({
-                      name: employee.name,
+                      name: employee.full_name || employee.name || employee.fullName,
                       email: employee.email,
                       phone: employee.phone,
                       department: employee.department,
-                      role: employee.role,
+                      role: employee.designation || employee.role,
                       salary: employee.salary,
                       address: employee.address
                     });
@@ -499,10 +513,10 @@ const Employees = () => {
             {/* Header info */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
               <Avatar size={90} style={{ backgroundColor: '#1677ff', fontSize: '32px', fontWeight: 600 }}>
-                {selectedEmp.name.split(' ').map(n => n[0]).join('')}
+                {(selectedEmp.full_name || selectedEmp.name || selectedEmp.fullName || 'Employee').split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase()}
               </Avatar>
-              <Title level={4} style={{ margin: 0 }}>{selectedEmp.name}</Title>
-              <Tag color="blue">{selectedEmp.role}</Tag>
+              <Title level={4} style={{ margin: 0 }}>{selectedEmp.full_name || selectedEmp.name || selectedEmp.fullName || 'Employee'}</Title>
+              <Tag color="blue">{selectedEmp.designation || selectedEmp.role || ''}</Tag>
             </div>
 
             <Divider style={{ margin: '8px 0' }} />
@@ -515,10 +529,10 @@ const Employees = () => {
             </Descriptions>
 
             <Descriptions title="Job Parameters" column={1} bordered size="small">
-              <Descriptions.Item label="ID Code">{selectedEmp.id}</Descriptions.Item>
+              <Descriptions.Item label="ID Code">{selectedEmp.employee_id || selectedEmp.id}</Descriptions.Item>
               <Descriptions.Item label="Department">{selectedEmp.department}</Descriptions.Item>
-              <Descriptions.Item label="Date of Joining">{selectedEmp.joinDate}</Descriptions.Item>
-              <Descriptions.Item label="Base Compensation">${(selectedEmp.salary || 65000).toLocaleString()} / year</Descriptions.Item>
+              <Descriptions.Item label="Date of Joining">{selectedEmp.joining_date || selectedEmp.joinDate}</Descriptions.Item>
+              <Descriptions.Item label="Base Compensation">${Number(selectedEmp.salary || 65000).toLocaleString()} / year</Descriptions.Item>
             </Descriptions>
 
             <Descriptions title="Workspace Absence Summary" column={1} bordered size="small">

@@ -33,8 +33,10 @@ const EmployeeCard = ({ employee, onView, onEdit }) => {
     }
   };
 
-  const initials = employee.name
+  const displayName = employee.full_name || employee.name || employee.fullName || 'Employee';
+  const initials = displayName
     .split(' ')
+    .filter(Boolean)
     .map(n => n[0])
     .join('')
     .toUpperCase();
@@ -57,7 +59,7 @@ const EmployeeCard = ({ employee, onView, onEdit }) => {
         <Tag color={getStatusColor(employee.status)} style={{ borderRadius: '4px', margin: 0 }}>
           {employee.status}
         </Tag>
-        <Text type="secondary" style={{ fontSize: '11px', fontWeight: 600 }}>{employee.id}</Text>
+        <Text type="secondary" style={{ fontSize: '11px', fontWeight: 600 }}>{employee.employee_id || employee.id}</Text>
       </div>
 
       {/* Main profile layout */}
@@ -74,8 +76,8 @@ const EmployeeCard = ({ employee, onView, onEdit }) => {
         >
           {initials}
         </Avatar>
-        <Title level={5} style={{ margin: '0 0 4px 0', fontWeight: 700 }}>{employee.name}</Title>
-        <Text type="secondary" style={{ fontSize: '13px', display: 'block', marginBottom: '6px' }}>{employee.role}</Text>
+        <Title level={5} style={{ margin: '0 0 4px 0', fontWeight: 700 }}>{employee.full_name || employee.name || employee.fullName || 'Employee'}</Title>
+        <Text type="secondary" style={{ fontSize: '13px', display: 'block', marginBottom: '6px' }}>{employee.designation || employee.role || ''}</Text>
         <Tag color="blue" style={{ borderRadius: '4px' }}>{employee.department}</Tag>
       </div>
 
@@ -97,7 +99,7 @@ const EmployeeCard = ({ employee, onView, onEdit }) => {
             style={{ color: '#6b7280' }}
           />
         </Tooltip>
-        <Tooltip title={`Joined: ${employee.joinDate}`}>
+        <Tooltip title={`Joined: ${employee.joining_date || employee.joinDate}`}>
           <Button 
             shape="circle" 
             icon={<CalendarOutlined />} 

@@ -8,6 +8,7 @@ import {
   CoffeeOutlined,
   DollarOutlined,
   TeamOutlined,
+  SettingOutlined,
   LogoutOutlined,
 } from '@ant-design/icons';
 import './Sidebar.css';
@@ -21,7 +22,10 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
   const getSelectedKey = () => {
     const path = location.pathname;
     if (path.startsWith('/dashboard')) return 'dashboard';
-    if (path.startsWith('/profile')) return 'profile';
+    if (path.startsWith('/profile')) {
+      if (location.hash === '#settings') return 'settings';
+      return 'profile';
+    }
     if (path.startsWith('/attendance')) return 'attendance';
     if (path.startsWith('/leave')) return 'leave';
     if (path.startsWith('/payroll')) return 'payroll';
@@ -34,6 +38,8 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
       localStorage.removeItem('isAuthenticated');
       localStorage.removeItem('currentUser');
       navigate('/login');
+    } else if (key === 'settings') {
+      navigate('/profile#settings');
     } else {
       navigate(`/${key}`);
     }
@@ -71,6 +77,12 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
       label: 'Employees',
     },
     {
+      key: 'settings',
+      icon: <SettingOutlined />,
+      label: 'Settings',
+    },
+    {
+      key: 'divider-logout',
       type: 'divider',
     },
     {

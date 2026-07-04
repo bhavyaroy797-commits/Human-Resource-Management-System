@@ -10,7 +10,8 @@ import {
   CoffeeOutlined,
   InfoCircleOutlined,
   SmileOutlined,
-  HistoryOutlined
+  HistoryOutlined,
+  SearchOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { api } from '../../services/api.js';
@@ -43,7 +44,7 @@ const Leave = () => {
   const loadLeaves = async () => {
     try {
       const res = await api.getLeaves();
-      setLeavesList(res.data);
+      setLeavesList(res.data.data || []);
     } catch (err) {
       console.error(err);
     }
@@ -63,35 +64,32 @@ const Leave = () => {
   const onFinish = (values) => {
     setLoading(true);
     
-    setTimeout(() => {
-      const startStr = values.dateRange[0].format('YYYY-MM-DD');
-      const endStr = values.dateRange[1].format('YYYY-MM-DD');
-      const appliedStr = dayjs().format('YYYY-MM-DD');
-      
-      const newRequest = {
-        empId: 'EMP003', // Logged in user profile ID
-        employeeName: currentUser.name,
-        type: values.type,
-        startDate: startStr,
-        endDate: endStr,
-        days: values.days,
-        reason: values.reason,
-        status: 'Pending',
-        approvedBy: '-'
-      };
+    const startStr = values.dateRange[0].format('YYYY-MM-DD');
+    const endStr = values.dateRange[1].format('YYYY-MM-DD');
+    
+    const newRequest = {
+      empId: currentUser.employee_id || currentUser.id || 'EMP001',
+      employeeName: currentUser.name || currentUser.fullName || currentUser.full_name || 'Employee',
+      type: values.type,
+      startDate: startStr,
+      endDate: endStr,
+      days: values.days,
+      reason: values.reason,
+      status: 'Pending',
+      approvedBy: '-'
+    };
 
-      api.applyLeave(newRequest)
-        .then(() => {
-          message.success('Leave application submitted successfully.');
-          form.resetFields();
-          setLoading(false);
-          loadLeaves(); // Refresh historical logs
-        })
-        .catch(err => {
-          message.error('Failed to submit leave request.');
-          setLoading(false);
-        });
-    }, 1200);
+    api.applyLeave(newRequest)
+      .then(() => {
+        message.success('Leave application submitted successfully.');
+        form.resetFields();
+        setLoading(false);
+        loadLeaves(); // Refresh historical logs
+      })
+      .catch(err => {
+        message.error('Failed to submit leave request.');
+        setLoading(false);
+      });
   };
 
   // Compile Metric Cards
@@ -100,9 +98,9 @@ const Leave = () => {
   const sickLimit = 10;
   const earnedLimit = 8;
 
-  const casualUsed = leavesList.filter(l => l.employeeName === currentUser.name && l.type === 'Casual Leave' && l.status === 'Approved').reduce((acc, curr) => acc + curr.days, 0);
-  const sickUsed = leavesList.filter(l => l.employeeName === currentUser.name && l.type === 'Sick Leave' && l.status === 'Approved').reduce((acc, curr) => acc + curr.days, 0);
-  const earnedUsed = leavesList.filter(l => l.employeeName === currentUser.name && l.type === 'Earned Leave' && l.status === 'Approved').reduce((acc, curr) => acc + curr.days, 0);
+  const casualUsed = leavesList.filter(l => (l.employee_name === currentUser.name || l.employeeName === currentUser.name) && l.type === 'Casual Leave' && l.status === 'Approved').reduce((acc, curr) => acc + curr.days, 0);
+  const sickUsed = leavesList.filter(l => (l.employee_name === currentUser.name || l.employeeName === currentUser.name) && l.type === 'Sick Leave' && l.status === 'Approved').reduce((acc, curr) => acc + curr.days, 0);
+  const earnedUsed = leavesList.filter(l => (l.employee_name === currentUser.name || l.employeeName === currentUser.name) && l.type === 'Earned Leave' && l.status === 'Approved').reduce((acc, curr) => acc + curr.days, 0);
 
   const pendingRequestsCount = leavesList.filter(l => l.status === 'Pending').length;
   const approvedLeavesCount = leavesList.filter(l => l.status === 'Approved').length;
@@ -114,7 +112,10 @@ const Leave = () => {
 
   // Search & Filter
   const filteredLeaves = leavesList.filter(l => {
-    const matchesSearch = l.employeeName.toLowerCase().includes(searchText.toLowerCase()) || l.type.toLowerCase().includes(searchText.toLowerCase());
+    const empName = l.employee_name || l.employeeName || l.fullName || '';
+    const leaveType = l.type || '';
+    const matchesSearch = empName.toLowerCase().includes(searchText.toLowerCase()) || 
+                          leaveType.toLowerCase().includes(searchText.toLowerCase());
     const matchesType = typeFilter === 'All' || l.type === typeFilter;
     return matchesSearch && matchesType;
   });
@@ -135,13 +136,13 @@ const Leave = () => {
     },
     {
       title: 'From',
-      dataIndex: 'startDate',
-      key: 'startDate'
+      key: 'startDate',
+      render: (_, record) => record.start_date || record.startDate
     },
     {
       title: 'To',
-      dataIndex: 'endDate',
-      key: 'endDate'
+      key: 'endDate',
+      render: (_, record) => record.end_date || record.endDate
     },
     {
       title: 'Days',
@@ -163,9 +164,8 @@ const Leave = () => {
     },
     {
       title: 'Approved By',
-      dataIndex: 'approvedBy',
       key: 'approvedBy',
-      render: (text) => <Text type="secondary">{text}</Text>
+      render: (_, record) => <Text type="secondary">{record.approved_by || record.approvedBy}</Text>
     }
   ];
 
@@ -176,8 +176,11 @@ const Leave = () => {
     
     // Check if matched approved or pending leaves
     const matched = leavesList.find(l => {
-      const start = dayjs(l.startDate);
-      const end = dayjs(l.endDate);
+      const startStr = l.start_date || l.startDate;
+      const endStr = l.end_date || l.endDate;
+      if (!startStr || !endStr) return false;
+      const start = dayjs(startStr);
+      const end = dayjs(endStr);
       return (value.isSame(start, 'day') || value.isAfter(start, 'day')) && (value.isSame(end, 'day') || value.isBefore(end, 'day'));
     });
 

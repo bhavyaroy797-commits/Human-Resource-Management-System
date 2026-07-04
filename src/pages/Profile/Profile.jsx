@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Avatar, Button, Tag, Tabs, Descriptions, Space, Progress, Timeline, List, Modal, Form, Input, Select, Upload, message, Typography } from 'antd';
+import { Card, Row, Col, Avatar, Button, Tag, Tabs, Descriptions, Space, Progress, Timeline, List, Modal, Form, Input, Select, Upload, message, Typography, Empty, Divider } from 'antd';
 import {
   UserOutlined,
   EditOutlined,
@@ -22,7 +22,42 @@ import { api } from '../../services/api.js';
 const { Title, Text, Paragraph } = Typography;
 
 const Profile = () => {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const stored = localStorage.getItem('currentUser');
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        return {
+          name: parsed.name || 'Ratnadeep Sen',
+          role: parsed.role || 'HR Manager',
+          email: parsed.email || 'ratna123@gmail.com',
+          id: 'EMP001',
+          department: 'HR',
+          status: 'Active',
+          phone: '+91 99999 88888',
+          gender: 'Male',
+          dob: '1990-09-09',
+          address: 'Mumbai HQ',
+          emergencyContact: 'Family: (+91 98765 43210)',
+          joinDate: '2021-01-10'
+        };
+      } catch (e) {}
+    }
+    return {
+      name: 'Ratnadeep Sen',
+      role: 'HR Manager',
+      email: 'ratna123@gmail.com',
+      id: 'EMP001',
+      department: 'HR',
+      status: 'Active',
+      phone: '+91 99999 88888',
+      gender: 'Male',
+      dob: '1990-09-09',
+      address: 'Mumbai HQ',
+      emergencyContact: 'Family: (+91 98765 43210)',
+      joinDate: '2021-01-10'
+    };
+  });
   const [employees, setEmployees] = useState([]);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [form] = Form.useForm();
@@ -41,13 +76,7 @@ const Profile = () => {
         const matchedProfile = allEmps.find(e => e.email === parsedUser.email);
         if (matchedProfile) {
           setCurrentUser(matchedProfile);
-        } else {
-          // Fallback dummy user if not found in directory
-          const defaultProfile = allEmps.find(e => e.email === 'amanda.r@company.com') || allEmps[0];
-          setCurrentUser(defaultProfile);
         }
-      } else {
-        setCurrentUser(allEmps[0]);
       }
     } catch (err) {
       console.error('Failed to load profile details:', err);
@@ -57,10 +86,6 @@ const Profile = () => {
   useEffect(() => {
     loadProfile();
   }, []);
-
-  if (!currentUser) {
-    return <div style={{ textAlign: 'center', padding: '50px' }}><Text>Loading profile...</Text></div>;
-  }
 
   // Handle Edit profile submission
   const handleEditSubmit = (values) => {
@@ -247,32 +272,35 @@ const Profile = () => {
     {
       key: 'payroll',
       label: 'Payroll',
-      children: (
-        <Card title="Compensation Summary" bordered={false} style={{ borderRadius: '12px' }}>
-          <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
-            <Col xs={24} md={12}>
-              <Descriptions title="Salary Structure" column={1} bordered size="middle">
-                <Descriptions.Item label="Basic Base Salary">${(currentUser.salary * 0.75).toLocaleString()} / year</Descriptions.Item>
-                <Descriptions.Item label="Housing Allowance">${(currentUser.salary * 0.15).toLocaleString()} / year</Descriptions.Item>
-                <Descriptions.Item label="Health & Medical Allowances">${(currentUser.salary * 0.1).toLocaleString()} / year</Descriptions.Item>
-                <Descriptions.Item label="Bonus Allowances (Target-based)">$5,000 / year</Descriptions.Item>
-                <Descriptions.Item label="Deductions (Insurance/Tax)">-$8,400 / year</Descriptions.Item>
-                <Descriptions.Item label="Net Annually Compensation" style={{ fontWeight: 'bold' }}>
-                  <span style={{ color: '#52c41a' }}>${(currentUser.salary - 8400 + 5000).toLocaleString()} / year</span>
-                </Descriptions.Item>
-              </Descriptions>
-            </Col>
-            <Col xs={24} md={12} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: '#fafafa', borderRadius: '8px', padding: '24px' }}>
-              <WalletOutlined style={{ fontSize: '48px', color: '#1677ff', marginBottom: '12px' }} />
-              <Title level={4} style={{ margin: '0 0 8px 0' }}>Payslip Generator</Title>
-              <Text type="secondary" style={{ textAlign: 'center', marginBottom: '20px', fontSize: '13px' }}>
-                View, download, or print your official consolidated payroll payslip.
-              </Text>
-              <Button type="primary" onClick={() => navigate('/payroll')} style={{ borderRadius: '6px' }}>Go to Payroll Portal</Button>
-            </Col>
-          </Row>
-        </Card>
-      )
+      children: (() => {
+        const salary = currentUser.salary || 85000;
+        return (
+          <Card title="Compensation Summary" bordered={false} style={{ borderRadius: '12px' }}>
+            <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+              <Col xs={24} md={12}>
+                <Descriptions title="Salary Structure" column={1} bordered size="middle">
+                  <Descriptions.Item label="Basic Base Salary">${(salary * 0.75).toLocaleString()} / year</Descriptions.Item>
+                  <Descriptions.Item label="Housing Allowance">${(salary * 0.15).toLocaleString()} / year</Descriptions.Item>
+                  <Descriptions.Item label="Health & Medical Allowances">${(salary * 0.1).toLocaleString()} / year</Descriptions.Item>
+                  <Descriptions.Item label="Bonus Allowances (Target-based)">$5,000 / year</Descriptions.Item>
+                  <Descriptions.Item label="Deductions (Insurance/Tax)">-$8,400 / year</Descriptions.Item>
+                  <Descriptions.Item label="Net Annually Compensation" style={{ fontWeight: 'bold' }}>
+                    <span style={{ color: '#52c41a' }}>${(salary - 8400 + 5000).toLocaleString()} / year</span>
+                  </Descriptions.Item>
+                </Descriptions>
+              </Col>
+              <Col xs={24} md={12} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', backgroundColor: '#fafafa', borderRadius: '8px', padding: '24px' }}>
+                <WalletOutlined style={{ fontSize: '48px', color: '#1677ff', marginBottom: '12px' }} />
+                <Title level={4} style={{ margin: '0 0 8px 0' }}>Payslip Generator</Title>
+                <Text type="secondary" style={{ textAlign: 'center', marginBottom: '20px', fontSize: '13px' }}>
+                  View, download, or print your official consolidated payroll payslip.
+                </Text>
+                <Button type="primary" onClick={() => navigate('/payroll')} style={{ borderRadius: '6px' }}>Go to Payroll Portal</Button>
+              </Col>
+            </Row>
+          </Card>
+        );
+      })()
     },
     {
       key: 'activity',
@@ -296,6 +324,28 @@ const Profile = () => {
     }
   ];
 
+  if (!currentUser || !currentUser.email) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '70vh', padding: '24px' }}>
+        <Card bordered={false} style={{ borderRadius: '16px', maxWidth: '480px', textAlign: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              <Space direction="vertical" size="small">
+                <Text strong style={{ fontSize: '16px' }}>Profile Folder Not Found</Text>
+                <Text type="secondary">We were unable to retrieve your detailed employee record from the server. Check your backend status or try refreshing.</Text>
+              </Space>
+            }
+          >
+            <Button type="primary" onClick={loadProfile} style={{ borderRadius: '6px', marginTop: '12px' }}>
+              Sync Profile Data
+            </Button>
+          </Empty>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
@@ -314,7 +364,7 @@ const Profile = () => {
               size={120} 
               style={{ backgroundColor: '#1677ff', fontSize: '48px', fontWeight: 600, boxShadow: '0 8px 16px rgba(0,0,0,0.1)' }}
             >
-              {currentUser.name.split(' ').map(n => n[0]).join('')}
+              {(currentUser.name || currentUser.fullName || 'Employee').split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase()}
             </Avatar>
             <Upload showUploadList={false} beforeUpload={() => { message.info('Upload photo simulation.'); return false; }}>
               <Button size="small" icon={<UploadOutlined />} style={{ marginTop: '12px', borderRadius: '6px' }}>Upload Photo</Button>
@@ -323,12 +373,12 @@ const Profile = () => {
           <Col xs={24} md={12} style={{ textAlign: { xs: 'center', md: 'left' } }}>
             <Space direction="vertical" size="small">
               <Space align="center" wrap>
-                <Title level={2} style={{ margin: 0, fontWeight: 700 }}>{currentUser.name}</Title>
+                <Title level={2} style={{ margin: 0, fontWeight: 700 }}>{currentUser.name || currentUser.fullName || 'Employee'}</Title>
                 <Tag color={currentUser.status === 'Active' ? 'green' : 'orange'} style={{ borderRadius: '4px' }}>
                   {currentUser.status}
                 </Tag>
               </Space>
-              <Text type="secondary" style={{ fontSize: '15px', display: 'block' }}>{currentUser.role}</Text>
+              <Text type="secondary" style={{ fontSize: '15px', display: 'block' }}>{currentUser.role || currentUser.designation || ''}</Text>
               <Space split={<Divider type="vertical" />} style={{ fontSize: '13px', color: '#8c8c8c' }}>
                 <span>ID: {currentUser.id}</span>
                 <span>Dept: {currentUser.department}</span>

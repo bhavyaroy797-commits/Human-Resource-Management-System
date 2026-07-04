@@ -1,13 +1,13 @@
 import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
-// Import Layouts
+// Import Layout structures
 import AuthLayout from '../layouts/AuthLayout.jsx';
 import MainLayout from '../layouts/MainLayout.jsx';
 import ProtectedRoute from '../components/ProtectedRoute.jsx';
 import Loader from '../components/Loader/Loader.jsx';
 
-// Lazy load Page Components
+// Lazy load Page Components to optimize performance bundle splits
 const Login = lazy(() => import('../pages/Auth/Login.jsx'));
 const Signup = lazy(() => import('../pages/Auth/Signup.jsx'));
 const Dashboard = lazy(() => import('../pages/Dashboard/Dashboard.jsx'));
@@ -18,6 +18,10 @@ const Payroll = lazy(() => import('../pages/Payroll/Payroll.jsx'));
 const Employees = lazy(() => import('../pages/Employees/Employees.jsx'));
 const NotFound = lazy(() => import('../pages/NotFound.jsx'));
 
+/**
+ * Main Application Routing Component.
+ * Registers public authentication screens and protected internal dashboards.
+ */
 const AppRoutes = () => {
   return (
     <Suspense fallback={<Loader tip="Loading page components..." />}>
@@ -25,7 +29,7 @@ const AppRoutes = () => {
         
         {/* 1. Public Authentication Routes (uses AuthLayout) */}
         <Route element={<AuthLayout />}>
-          {/* Default landing redirects to login */}
+          {/* Default landing redirect rules */}
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
@@ -47,7 +51,7 @@ const AppRoutes = () => {
           <Route path="/employees" element={<Employees />} />
         </Route>
 
-        {/* 3. Fallback Catch-all Route (Page Not Found) */}
+        {/* 3. Fallback Catch-all Route (404 Page Not Found) */}
         <Route path="*" element={<NotFound />} />
         
       </Routes>

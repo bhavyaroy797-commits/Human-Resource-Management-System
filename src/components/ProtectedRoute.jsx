@@ -2,11 +2,12 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 
 const ProtectedRoute = ({ children }) => {
-  // Read simulated authentication state from LocalStorage
+  // Check both authentication state flag and active JWT token presence
   const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
+  const token = localStorage.getItem('token');
 
-  if (!isAuthenticated) {
-    // Redirect to login page if unauthorized
+  if (!isAuthenticated || !token) {
+    // Redirect to login page if unauthorized or token is missing
     return <Navigate to="/login" replace />;
   }
 

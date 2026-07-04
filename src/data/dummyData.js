@@ -708,3 +708,27 @@ export const growthChartData = [
   { month: 'May', count: 19 },
   { month: 'Jun', count: 20 }
 ];
+
+// 9. Current Logged-in User Default Profile Data
+export const currentUser = {
+  id: 'EMP001',
+  employeeId: 'EMP001',
+  fullName: 'Ratnadeep Sen',
+  name: 'Ratnadeep Sen',
+  email: 'ratna123@gmail.com',
+  phone: '+91 99999 88888',
+  department: 'HR',
+  designation: 'HR Manager',
+  role: 'HR Manager',
+  joiningDate: '2021-01-10',
+  joinDate: '2021-01-10',
+  profileImage: null,
+  attendance: 95.6,
+  leaveBalance: 24,
+  salary: 1140000,
+  status: 'Active',
+  gender: 'Male',
+  dob: '1990-09-09',
+  address: 'Mumbai HQ',
+  emergencyContact: 'Family: (+91 98765 43210)'
+};

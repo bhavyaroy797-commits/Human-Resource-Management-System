@@ -42,9 +42,9 @@ const Dashboard = () => {
       const leaveRes = await api.getLeaves();
       const attRes = await api.getAttendance();
       
-      setEmployees(empRes.data);
-      setLeaves(leaveRes.data);
-      setAttendance(attRes.data);
+      setEmployees(empRes.data.data || []);
+      setLeaves(leaveRes.data.data || []);
+      setAttendance(attRes.data.data || []);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     }
@@ -95,17 +95,21 @@ const Dashboard = () => {
     {
       title: 'Employee',
       key: 'employee',
-      render: (_, record) => (
-        <Space>
-          <Avatar style={{ backgroundColor: '#1677ff' }}>
-            {record.name.split(' ').map(n => n[0]).join('')}
-          </Avatar>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <Text strong style={{ fontSize: '13px' }}>{record.name}</Text>
-            <Text type="secondary" style={{ fontSize: '11px' }}>{record.email}</Text>
-          </div>
-        </Space>
-      )
+      render: (_, record) => {
+        const empName = record.full_name || record.fullName || record.name || 'Employee';
+        const initials = empName.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase();
+        return (
+          <Space>
+            <Avatar style={{ backgroundColor: '#1677ff' }}>
+              {initials}
+            </Avatar>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <Text strong style={{ fontSize: '13px' }}>{empName}</Text>
+              <Text type="secondary" style={{ fontSize: '11px' }}>{record.email}</Text>
+            </div>
+          </Space>
+        );
+      }
     },
     {
       title: 'Department',
@@ -115,9 +119,9 @@ const Dashboard = () => {
     },
     {
       title: 'Position',
-      dataIndex: 'role',
-      key: 'role',
-      render: (text) => <Text style={{ fontSize: '13px' }}>{text}</Text>
+      dataIndex: 'designation',
+      key: 'designation',
+      render: (text, record) => <Text style={{ fontSize: '13px' }}>{text || record.role || record.designation || ''}</Text>
     },
     {
       title: 'Status',
@@ -136,7 +140,7 @@ const Dashboard = () => {
         <Button 
           type="text" 
           icon={<EyeOutlined />} 
-          onClick={() => navigate('/employees', { state: { searchId: record.id } })}
+          onClick={() => navigate('/employees', { state: { searchId: record.employee_id || record.id } })}
         />
       )
     }
@@ -160,11 +164,11 @@ const Dashboard = () => {
           <Col xs={24} md={16}>
             <Space align="center" size="middle" style={{ marginBottom: '16px' }}>
               <Avatar size={64} style={{ backgroundColor: '#ffffff', color: '#1677ff', fontSize: '24px', fontWeight: 600 }}>
-                {currentUser.name.split(' ').map(n => n[0]).join('')}
+                {(currentUser.name || currentUser.fullName || currentUser.full_name || 'Admin').split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase()}
               </Avatar>
               <div>
                 <Title level={3} style={{ color: '#ffffff', margin: 0, fontWeight: 700 }}>
-                  Good Morning, {currentUser.name}!
+                  Good Morning, {currentUser.name || currentUser.fullName || currentUser.full_name || 'Admin'}!
                 </Title>
                 <Text style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '13px' }}>
                   {formattedDate} | <span style={{ fontWeight: 600 }}>{formattedTime}</span>
