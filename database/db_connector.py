@@ -20,7 +20,7 @@ class HRMSDatabase:
         self.host = host or os.getenv("MYSQL_HOST", "localhost")
         self.port = int(os.getenv("MYSQL_PORT", 3306))
         self.user = user or os.getenv("MYSQL_USER", "root")
-        self.password = password or os.getenv("MYSQL_PASSWORD", "")
+        self.password = password or os.getenv("MYSQL_PASSWORD", "mysqlbhavya17#")
         self.database = database or os.getenv("MYSQL_DB", "hrms_db")
         
         self.connection = None
