@@ -1,4 +1,4 @@
-﻿import os
+import os
 from datetime import date, datetime
 from functools import wraps
 from dotenv import load_dotenv
