@@ -1,0 +1,15 @@
+.employee-directory-card {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease-in-out;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+}
+
+.employee-directory-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06) !important;
+  border-color: rgba(22, 119, 255, 0.15) !important;
+}
+
+.card-contact-strip .ant-btn:hover {
+  color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+}

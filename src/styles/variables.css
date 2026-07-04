@@ -1,0 +1,261 @@
+/* 
+  HRMS Enterprise Design System Variables 
+  Includes: Colors, Typography, Layout, Borders, Radii, Shadows, Spacing, Transitions, Z-Indexes & Responsive Breakpoints
+*/
+
+:root {
+  /* ==========================================
+     A. BRAND COLOR SYSTEM
+     ========================================== */
+  /* 1. Primary Colors */
+  --primary-color: #1677FF;
+  --primary-hover: #4096FF;
+  --primary-active: #0958d9;
+
+  /* 2. Secondary Colors */
+  --secondary-color: #2f54eb;
+  --secondary-hover: #597ef7;
+  --secondary-active: #1d39c4;
+
+  /* 3. Success Colors */
+  --success-color: #52c41a;
+  --success-hover: #73d13d;
+  --success-bg: #f6ffed;
+
+  /* 4. Warning Colors */
+  --warning-color: #faad14;
+  --warning-hover: #ffc53d;
+  --warning-bg: #fffbe6;
+
+  /* 5. Error Colors */
+  --error-color: #ff4d4f;
+  --error-hover: #ff7875;
+  --error-bg: #fff1f0;
+
+  /* 6. Info Colors */
+  --info-color: #13c2c2;
+  --info-hover: #36cfc9;
+  --info-bg: #e6fffb;
+
+  /* 7. Neutral Colors */
+  --white: #ffffff;
+  --black: #000000;
+  --neutral-border: rgba(0, 0, 0, 0.06);
+  --neutral-divider: rgba(0, 0, 0, 0.04);
+  --border-color: rgba(0, 0, 0, 0.06);
+
+  /* 8. Background Colors */
+  --bg-color: #F5F7FA;
+  --bg-secondary: #EBF0F5;
+
+  /* 9. Surface Colors */
+  --surface-color: #fafafa;
+  --surface-hover: #f5f5f5;
+
+  /* 10. Card Colors */
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.06);
+
+  /* 11. Sidebar Colors */
+  --sidebar-bg: #001529;
+  --sidebar-text: rgba(255, 255, 255, 0.65);
+  --sidebar-hover: rgba(255, 255, 255, 0.85);
+  --sidebar-active: #1677FF;
+
+  /* 12. Header Colors */
+  --header-bg: #ffffff;
+  --header-text: #1F2937;
+  --header-border: rgba(0, 0, 0, 0.06);
+
+  /* 13. Text Colors */
+  --text-color: #1F2937;
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --text-muted: #9CA3AF;
+  --text-placeholder: #D1D5DB;
+
+  /* ==========================================
+     B. TYPOGRAPHY SYSTEM
+     ========================================== */
+  /* 1. Font Family */
+  --font-family: 'Inter', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  /* 2. Font Sizes Scale (12px to 48px) */
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 20px;
+  --fs-xxl: 24px;
+  --fs-3xl: 32px;
+  --fs-4xl: 40px;
+  --fs-5xl: 48px;
+
+  /* 3. Font Weights */
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* 4. Line Heights */
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --lh-loose: 1.75;
+
+  /* 5. Letter Spacing */
+  --ls-tight: -0.02em;
+  --ls-normal: 0em;
+  --ls-wide: 0.02em;
+
+  /* ==========================================
+     C. LAYOUT VARIABLES
+     ========================================== */
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 80px;
+  --header-height: 64px;
+  --footer-height: 70px;
+  --container-width: 1280px;
+  --content-padding: 24px;
+
+  /* ==========================================
+     D. BORDER RADIUS, BORDERS & SHADOWS
+     ========================================== */
+  /* 1. Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* 2. Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.05), 0 4px 6px rgba(0, 0, 0, 0.03);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.04);
+  --shadow-floating: 0 20px 25px rgba(0, 0, 0, 0.08), 0 10px 10px rgba(0, 0, 0, 0.03);
+
+  /* 3. Borders */
+  --border-width: 1px;
+  --border-style: solid;
+
+  /* ==========================================
+     E. SPACING SCALE
+     ========================================== */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 40px;
+  --space-5xl: 48px;
+  --space-6xl: 64px;
+
+  /* Numeric Aliases for Utility Class Support */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  /* ==========================================
+     F. TRANSITIONS & ANIMATIONS
+     ========================================== */
+  /* 1. Transition Durations */
+  --transition-fast: 150ms;
+  --transition-normal: 300ms;
+  --transition-slow: 500ms;
+
+  /* 2. Animation Durations */
+  --anim-duration-short: 150ms;
+  --anim-duration-base: 300ms;
+  --anim-duration-long: 500ms;
+
+  /* 3. Animation Timing (Easings) */
+  --anim-timing-linear: linear;
+  --anim-timing-ease: ease;
+  --anim-timing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --anim-timing-decelerate: cubic-bezier(0.0, 0, 0.2, 1);
+  --anim-timing-accelerate: cubic-bezier(0.4, 0, 1, 1);
+
+  /* 4. Hover Transition (Composite) */
+  --transition-hover: all var(--transition-fast) var(--anim-timing-standard);
+
+  /* 5. Focus Transition (Composite) */
+  --transition-focus: box-shadow var(--transition-fast) var(--anim-timing-standard), border-color var(--transition-fast) var(--anim-timing-standard);
+
+  /* ==========================================
+     G. Z-INDEX SCALE
+     ========================================== */
+  --z-header: 100;
+  --z-sidebar: 110;
+  --z-dropdown: 200;
+  --z-drawer: 1000;
+  --z-modal: 1010;
+  --z-tooltip: 1020;
+  --z-notification: 1030;
+  --z-loading-overlay: 1040;
+
+  /* ==========================================
+     H. RESPONSIVE BREAKPOINTS REFERENCE
+     ========================================== */
+  --bp-desktop: 1200px;
+  --bp-laptop: 992px;
+  --bp-tablet: 768px;
+  --bp-mobile-lg: 576px;
+  --bp-mobile: 480px;
+  --bp-mobile-sm: 320px;
+}
+
+/* ==========================================
+   I. DARK THEME COLOR & SHADOW OVERRIDES
+   ========================================== */
+[data-theme='dark'] {
+  /* Brand Overrides */
+  --primary-hover: #4096FF;
+  --primary-active: #1677FF;
+
+  /* Neutrals Overrides */
+  --neutral-border: rgba(255, 255, 255, 0.08);
+  --neutral-divider: rgba(255, 255, 255, 0.04);
+  --border-color: rgba(255, 255, 255, 0.08);
+
+  /* Background Overrides */
+  --bg-color: #0f172a;
+  --bg-secondary: #0b0f19;
+
+  /* Surface Overrides */
+  --surface-color: #1e293b;
+  --surface-hover: #334155;
+
+  /* Card Overrides */
+  --card-bg: #1e293b;
+  --card-border: rgba(255, 255, 255, 0.08);
+
+  /* Sidebar Overrides */
+  --sidebar-bg: #0b0f19;
+  --sidebar-text: rgba(255, 255, 255, 0.55);
+
+  /* Header Overrides */
+  --header-bg: #1e293b;
+  --header-text: #f1f5f9;
+  --header-border: rgba(255, 255, 255, 0.08);
+
+  /* Text Overrides */
+  --text-color: #f1f5f9;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-placeholder: #475569;
+
+  /* Shadows override for dark mode */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-floating: 0 20px 25px rgba(0, 0, 0, 0.45);
+}

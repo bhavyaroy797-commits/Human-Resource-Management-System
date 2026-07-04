@@ -1,0 +1,47 @@
+.navbar-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  z-index: 9;
+  position: sticky;
+  top: 0;
+  width: 100%;
+}
+
+.navbar-toggle-btn {
+  font-size: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.navbar-toggle-btn:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Responsive elements: Hide search on smaller devices */
+@media (max-width: 576px) {
+  .navbar-search {
+    display: none !important;
+  }
+}
+
+/* Responsive elements: Hide details on smaller devices */
+@media (max-width: 768px) {
+  .navbar-user-info {
+    display: none !important;
+  }
+}
+
+.navbar-profile-dropdown {
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.navbar-profile-dropdown:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+}
