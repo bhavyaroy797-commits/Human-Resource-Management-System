@@ -1,8 +1,3 @@
-"""
-Direct MySQL connector for HRMS.
-Minimal overhead, no API dependency.
-Use this on any device that needs direct database access.
-"""
 
 import os
 import mysql.connector
@@ -14,13 +9,13 @@ class HRMSDatabase:
     """Direct MySQL connector for HRMS database operations."""
 
     def __init__(self, host=None, port=None, user=None, password=None, database=None):
-        """Initialize database connection with optional env override."""
+        
         load_dotenv()
         
         self.host = host or os.getenv("MYSQL_HOST", "localhost")
         self.port = int(os.getenv("MYSQL_PORT", 3306))
         self.user = user or os.getenv("MYSQL_USER", "root")
-        self.password = password or os.getenv("MYSQL_PASSWORD", "")
+        self.password = password or os.getenv("MYSQL_PASSWORD", "mysqlbhavya17#")
         self.database = database or os.getenv("MYSQL_DB", "hrms_db")
         
         self.connection = None
